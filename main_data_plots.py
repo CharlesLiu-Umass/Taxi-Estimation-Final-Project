@@ -21,7 +21,7 @@ import numpy as np
 import os
 
 # ── Config ────────────────────────────────────────────────────────────────────
-CLEANED_PATH = "./YellowTripData_Cleaned/"
+CLEANED_PATH = "/mnt/c/Users/13392/Downloads/OneDrive - University of Massachusetts/Grad_School_Sem_2/CS 532/Project/Data/Data_Cleaned"
 PLOT_DIR     = "./plots/"
 SAMPLE_N     = 200_000
 SEED         = 42

@@ -25,7 +25,7 @@ spark.sparkContext.setLogLevel("WARN")
 # ─────────────────────────────────────────────
 # 1. LOAD
 # ─────────────────────────────────────────────
-df = spark.read.parquet("./YellowTripData/")
+df = spark.read.parquet("/mnt/c/Users/13392/Downloads/OneDrive - University of Massachusetts/Grad_School_Sem_2/CS 532/Project/Data")
 
 print(f"Raw row count: {df.count():,}")
 df.printSchema()
@@ -187,6 +187,7 @@ df.describe(
 # ─────────────────────────────────────────────
 # 7. SAVE
 # ─────────────────────────────────────────────
-OUTPUT_PATH = "/home/hetansh/Documents/532_FinalProject/YellowTripData_Cleaned/"
+OUTPUT_PATH = "/mnt/c/Users/13392/Downloads/OneDrive - University of Massachusetts/Grad_School_Sem_2/CS 532/Project/Data/Data_Cleaned"
 df.write.mode("overwrite").parquet(OUTPUT_PATH)
 print(f"\nCleaned data written to: {OUTPUT_PATH}")
+
