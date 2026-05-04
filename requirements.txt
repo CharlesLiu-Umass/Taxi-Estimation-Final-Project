@@ -7,3 +7,9 @@ xgboost
 tf2onnx
 onnxruntime
 joblib
+fastapi
+uvicorn[standard]
+streamlit
+requests
+pydantic
+plotly
