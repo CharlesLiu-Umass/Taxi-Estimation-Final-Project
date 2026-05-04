@@ -13,12 +13,15 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from tensorflow import keras
+import tensorflow as tf
 
-
+PRUNED = True
 # ── Paths ────────────────────────────────────────────────────────────────────
 MODEL_DIR = Path(__file__).resolve().parent.parent / "Models"
-MODEL_PATH = MODEL_DIR / "taxi_model_NN.keras"
 SCALER_PATH = MODEL_DIR / "scaler.pkl"
+MODEL_PATH = MODEL_DIR / "taxi_model_NN.keras"
+if PRUNED:
+    MODEL_PATH = Path(__file__).resolve().parent.parent / "Model_Speedup" / "taxi_model.tflite"
 
 # ── Global holders (populated at startup) ────────────────────────────────────
 model = None
@@ -35,7 +38,10 @@ async def lifespan(app: FastAPI):
     if not SCALER_PATH.exists():
         raise FileNotFoundError(f"Scaler not found: {SCALER_PATH}")
 
-    model = keras.models.load_model(str(MODEL_PATH))
+    if PRUNED:
+        model = tf.lite.Interpreter(model_path=str(MODEL_PATH))
+    else:
+        model = keras.models.load_model(str(MODEL_PATH))
     scaler = joblib.load(str(SCALER_PATH))
     print(f"Model loaded from {MODEL_PATH}")
     print(f"Scaler loaded from {SCALER_PATH}")
@@ -119,15 +125,30 @@ async def predict(trip: TripInput):
 
         # Scale then predict (model outputs log1p-space)
         features_scaled = scaler.transform(features_df)
-        pred_log = model.predict(features_scaled, verbose=0)
-        pred_seconds = float(np.expm1(pred_log[0][0]))
+
+        #If Prune
+        if PRUNED:
+            features_scaled = features_scaled.astype('float32')
+
+            #Run pruned TFLite
+            input_details = model.get_input_details()
+            output_details = model.get_output_details()
+            model.resize_tensor_input(input_details[0]['index'], [len(features_scaled), 7])
+            model.allocate_tensors()
+            model.set_tensor(input_details[0]['index'], features_scaled)
+            model.invoke()
+            pred_seconds = np.expm1(model.get_tensor(output_details[0]['index']))
+         
+        else:
+            pred_log = model.predict(features_scaled, verbose=0)
+            pred_seconds = float(np.expm1(pred_log[0][0]))
 
         # Clamp to reasonable range
         pred_seconds = max(0.0, pred_seconds)
 
         return PredictionResponse(
-            trip_duration_seconds=round(pred_seconds, 2),
-            trip_duration_minutes=round(pred_seconds / 60, 2),
+            trip_duration_seconds=np.round(pred_seconds, 2),
+            trip_duration_minutes=np.round(pred_seconds / 60, 2),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
