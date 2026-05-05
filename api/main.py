@@ -1,59 +1,70 @@
 """
 FastAPI backend for NYC Taxi Trip Duration Prediction.
 
-Loads the Keras NN model and StandardScaler, exposes /predict and /health endpoints.
+Loads both the full Keras NN model and the pruned TFLite model at startup.
+The client chooses which model to use via a query parameter.
 """
 
 from pathlib import Path
 from contextlib import asynccontextmanager
+from enum import Enum
 
 import numpy as np
+import pandas as pd
 import joblib
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from tensorflow import keras
 import tensorflow as tf
 
-PRUNED = True
+
 # ── Paths ────────────────────────────────────────────────────────────────────
-MODEL_DIR = Path(__file__).resolve().parent.parent / "Models"
-SCALER_PATH = MODEL_DIR / "scaler.pkl"
-MODEL_PATH = MODEL_DIR / "taxi_model_NN.keras"
-if PRUNED:
-    MODEL_PATH = Path(__file__).resolve().parent.parent / "Model_Speedup" / "taxi_model.tflite"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+KERAS_MODEL_PATH = PROJECT_ROOT / "Models" / "taxi_model_NN.keras"
+TFLITE_MODEL_PATH = PROJECT_ROOT / "Model_Speedup" / "taxi_model.tflite"
+SCALER_PATH = PROJECT_ROOT / "Models" / "scaler.pkl"
 
 # ── Global holders (populated at startup) ────────────────────────────────────
-model = None
+keras_model = None
+tflite_model = None
 scaler = None
 
 
 # ── Lifespan ─────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load model & scaler once at startup."""
-    global model, scaler
-    if not MODEL_PATH.exists():
-        raise FileNotFoundError(f"Model not found: {MODEL_PATH}")
+    """Load both models & scaler once at startup."""
+    global keras_model, tflite_model, scaler
+
     if not SCALER_PATH.exists():
         raise FileNotFoundError(f"Scaler not found: {SCALER_PATH}")
 
-    if PRUNED:
-        model = tf.lite.Interpreter(model_path=str(MODEL_PATH))
-    else:
-        model = keras.models.load_model(str(MODEL_PATH))
     scaler = joblib.load(str(SCALER_PATH))
-    print(f"Model loaded from {MODEL_PATH}")
     print(f"Scaler loaded from {SCALER_PATH}")
-    yield  # app runs
-    model = None
+
+    if KERAS_MODEL_PATH.exists():
+        keras_model = keras.models.load_model(str(KERAS_MODEL_PATH))
+        print(f"Keras model loaded from {KERAS_MODEL_PATH}")
+    else:
+        print(f"Keras model not found at {KERAS_MODEL_PATH}")
+
+    if TFLITE_MODEL_PATH.exists():
+        tflite_model = tf.lite.Interpreter(model_path=str(TFLITE_MODEL_PATH))
+        print(f"TFLite model loaded from {TFLITE_MODEL_PATH}")
+    else:
+        print(f"TFLite model not found at {TFLITE_MODEL_PATH}")
+
+    yield
+    keras_model = None
+    tflite_model = None
     scaler = None
 
 
 # ── App ──────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="NYC Taxi Trip Duration Predictor",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
 )
 
@@ -78,6 +89,11 @@ FEATURE_ORDER = [
 ]
 
 
+class ModelType(str, Enum):
+    keras = "keras"
+    tflite = "tflite"
+
+
 class TripInput(BaseModel):
     """Seven features expected by the NN model (reduced feature list)."""
     passenger_count: int = Field(..., ge=0, le=9, description="Number of passengers")
@@ -92,6 +108,7 @@ class TripInput(BaseModel):
 class PredictionResponse(BaseModel):
     trip_duration_seconds: float
     trip_duration_minutes: float
+    model_used: str
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
@@ -99,13 +116,17 @@ class PredictionResponse(BaseModel):
 async def health():
     return {
         "status": "healthy",
-        "model_loaded": model is not None,
+        "keras_model_loaded": keras_model is not None,
+        "tflite_model_loaded": tflite_model is not None,
         "scaler_loaded": scaler is not None,
     }
 
 
 @app.post("/predict", response_model=PredictionResponse)
-async def predict(trip: TripInput):
+async def predict(
+    trip: TripInput,
+    model_type: ModelType = Query(ModelType.tflite, description="Which model to use: 'keras' or 'tflite'"),
+):
     """Return predicted trip duration for one trip."""
     try:
         # Build feature array in the exact order used during training
@@ -119,36 +140,34 @@ async def predict(trip: TripInput):
             trip.is_weekend,
         ]], dtype=np.float64)
 
-        # Use a DataFrame so sklearn sees the feature names it was fitted with
-        import pandas as pd
         features_df = pd.DataFrame(features, columns=FEATURE_ORDER)
-
-        # Scale then predict (model outputs log1p-space)
         features_scaled = scaler.transform(features_df)
 
-        #If Prune
-        if PRUNED:
-            features_scaled = features_scaled.astype('float32')
-
-            #Run pruned TFLite
-            input_details = model.get_input_details()
-            output_details = model.get_output_details()
-            model.resize_tensor_input(input_details[0]['index'], [len(features_scaled), 7])
-            model.allocate_tensors()
-            model.set_tensor(input_details[0]['index'], features_scaled)
-            model.invoke()
-            pred_seconds = np.expm1(model.get_tensor(output_details[0]['index']))
-         
+        if model_type == ModelType.tflite:
+            if tflite_model is None:
+                raise HTTPException(status_code=400, detail="TFLite model is not loaded")
+            features_scaled = features_scaled.astype("float32")
+            input_details = tflite_model.get_input_details()
+            output_details = tflite_model.get_output_details()
+            tflite_model.resize_tensor_input(input_details[0]["index"], [len(features_scaled), 7])
+            tflite_model.allocate_tensors()
+            tflite_model.set_tensor(input_details[0]["index"], features_scaled)
+            tflite_model.invoke()
+            pred_seconds = float(np.expm1(tflite_model.get_tensor(output_details[0]["index"])[0][0]))
         else:
-            pred_log = model.predict(features_scaled, verbose=0)
+            if keras_model is None:
+                raise HTTPException(status_code=400, detail="Keras model is not loaded")
+            pred_log = keras_model.predict(features_scaled, verbose=0)
             pred_seconds = float(np.expm1(pred_log[0][0]))
 
-        # Clamp to reasonable range
         pred_seconds = max(0.0, pred_seconds)
 
         return PredictionResponse(
-            trip_duration_seconds=np.round(pred_seconds, 2),
-            trip_duration_minutes=np.round(pred_seconds / 60, 2),
+            trip_duration_seconds=round(pred_seconds, 2),
+            trip_duration_minutes=round(pred_seconds / 60, 2),
+            model_used=model_type.value,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
