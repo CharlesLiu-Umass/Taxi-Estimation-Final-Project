@@ -35,6 +35,17 @@ st.set_page_config(page_title="NYC Taxi Trip Predictor", layout="wide")
 st.title("NYC Taxi Trip Duration Predictor")
 st.caption(f"API endpoint: {API_URL}")
 
+# ── Sidebar: Model selector ─────────────────────────────────────────────────
+MODEL_OPTIONS = {
+    "Full NN (Keras)": "keras",
+    "Pruned NN (TFLite)": "tflite",
+}
+with st.sidebar:
+    st.header("Settings")
+    model_label = st.selectbox("Model", list(MODEL_OPTIONS.keys()), index=1)
+    selected_model = MODEL_OPTIONS[model_label]
+    st.caption(f"API query param: `model_type={selected_model}`")
+
 tab_predict, tab_loadtest = st.tabs(["Single Trip Prediction", "Load Testing"])
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -73,7 +84,7 @@ with tab_predict:
             "is_weekend": is_weekend,
         }
         try:
-            resp = requests.post(f"{API_URL}/predict", json=payload, timeout=10)
+            resp = requests.post(f"{API_URL}/predict", json=payload, params={"model_type": selected_model}, timeout=10)
             resp.raise_for_status()
             data = resp.json()
             secs = data["trip_duration_seconds"]
@@ -82,9 +93,10 @@ with tab_predict:
 
             st.success(f"**Estimated trip duration: {mins} min {rem_secs} sec** ({secs:.1f} seconds)")
 
-            metric_cols = st.columns(2)
+            metric_cols = st.columns(3)
             metric_cols[0].metric("Duration (seconds)", f"{secs:.1f}")
             metric_cols[1].metric("Duration (minutes)", f"{data['trip_duration_minutes']:.2f}")
+            metric_cols[2].metric("Model Used", data.get("model_used", selected_model))
         except requests.ConnectionError:
             st.error(f"Cannot connect to the API at {API_URL}. Make sure the FastAPI server is running.")
         except Exception as e:
@@ -114,7 +126,12 @@ def _send_request() -> dict:
     start = time.perf_counter()
     try:
         with requests.Session() as session:
-            resp = session.post(f"{API_URL}/predict", json=payload, timeout=30)
+            resp = session.post(
+                f"{API_URL}/predict",
+                json=payload,
+                params={"model_type": selected_model},
+                timeout=30,
+            )
         latency = time.perf_counter() - start
         return {"latency": latency, "status": resp.status_code, "success": resp.status_code == 200}
     except Exception as e:

@@ -1,0 +1,13 @@
+﻿,Value
+Total Requests,1000
+Successful,1000
+Failed,0
+Error Rate (%),0
+Total Time (s),5.68
+Throughput (req/s),175.99
+Mean Latency (ms),809.5
+Median Latency (ms),71.4
+P95 Latency (ms),3734.7
+P99 Latency (ms),3793.59
+Min Latency (ms),15
+Max Latency (ms),3813.4

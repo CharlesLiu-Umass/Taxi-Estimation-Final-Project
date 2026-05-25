@@ -2,6 +2,7 @@ from pathlib import Path
 import pandas as pd
 from tensorflow import keras
 import joblib
+import tensorflow as tf
 
 #Helper function to identify project directory
 #Useful for .ipynb files whose working directory differs from project directory by default
@@ -46,3 +47,10 @@ def load_scaler():
     scaler_dir = root / "Models" / "scaler.pkl"
     scaler = joblib.load(scaler_dir)
     return scaler
+
+def load_TF_model(): 
+    "Loads TFLite version of the Model"
+    root = find_project_root()
+    model_dir = root / "Model_Speedup" / "taxi_model.tflite"
+    model = tf.lite.Interpreter(model_path=model_dir)
+    return model

@@ -32,11 +32,11 @@ def random_payload() -> dict:
     }
 
 
-def send_request(session: requests.Session, url: str) -> dict:
+def send_request(session: requests.Session, url: str, model_type: str) -> dict:
     payload = random_payload()
     start = time.perf_counter()
     try:
-        resp = session.post(f"{url}/predict", json=payload, timeout=30)
+        resp = session.post(f"{url}/predict", json=payload, params={"model_type": model_type}, timeout=30)
         latency = time.perf_counter() - start
         return {"latency": latency, "status": resp.status_code, "success": resp.status_code == 200}
     except Exception as e:
@@ -56,18 +56,20 @@ def main():
     parser.add_argument("--users", type=int, default=10, help="Number of concurrent users/threads")
     parser.add_argument("--requests-per-user", type=int, default=10, help="Requests each user sends")
     parser.add_argument("--url", type=str, default=API_URL, help="Base URL of the API")
+    parser.add_argument("--model-type", type=str, default="tflite", choices=["keras", "tflite"],
+                        help="Model to use: 'keras' (full NN) or 'tflite' (pruned)")
     args = parser.parse_args()
 
     total = args.users * args.requests_per_user
     print(f"\nLoad Test: {args.users} concurrent users × {args.requests_per_user} requests = {total} total requests")
-    print(f"Target: {args.url}\n")
+    print(f"Target: {args.url}  |  Model: {args.model_type}\n")
 
     session = requests.Session()
     results: list[dict] = []
     wall_start = time.perf_counter()
 
     with ThreadPoolExecutor(max_workers=args.users) as pool:
-        futures = [pool.submit(send_request, session, args.url) for _ in range(total)]
+        futures = [pool.submit(send_request, session, args.url, args.model_type) for _ in range(total)]
         for i, future in enumerate(as_completed(futures), 1):
             results.append(future.result())
             if i % max(1, total // 10) == 0:

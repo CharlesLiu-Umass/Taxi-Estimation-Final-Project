@@ -1,5 +1,7 @@
 # CS-532-Final-Project
 
+Github link: https://github.com/Lyle-Kottke/CS-532-Final-Project
+
 ## Running the App
 
 Install dependencies:
