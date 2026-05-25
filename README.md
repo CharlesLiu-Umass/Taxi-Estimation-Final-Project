@@ -1,5 +1,55 @@
 # CS-532-Final-Project
 
+## Running the App
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Start the FastAPI backend:
+
+```bash
+uvicorn api.main:app --reload
+```
+
+Start the Streamlit frontend in another terminal:
+
+```bash
+streamlit run streamlit_app.py
+```
+
+By default, Streamlit sends requests to `http://localhost:8000`. To point it at a
+different backend, set `TAXI_API_URL` before launching Streamlit:
+
+```bash
+TAXI_API_URL=http://localhost:8001 streamlit run streamlit_app.py
+```
+
+Run the CLI load test:
+
+```bash
+python tests/load_test.py --users 10 --requests-per-user 10
+```
+
+## Data Script Configuration
+
+The Spark cleaning script now defaults to local project-relative paths:
+
+```bash
+python pyspark_read.py --input ./YellowTripData --output ./Data/Data_Cleaned
+```
+
+You can also use environment variables:
+
+```bash
+TAXI_RAW_PATH=/path/to/raw/parquet TAXI_CLEANED_PATH=/path/to/cleaned python pyspark_read.py
+```
+
+The post-cleaning plotting script reads cleaned data from `TAXI_CLEANED_PATH`,
+falling back to `./Data/Data_Cleaned`.
+
 ### Dataset Column Definitions:
 - VendorID : 1, 2, 6, 7 just companies providing taxi trip data
 - tpep_pickup_datetime The date and time when the meter was engaged

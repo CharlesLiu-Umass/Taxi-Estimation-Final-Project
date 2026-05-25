@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 
 import numpy as np
 import joblib
+import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -101,6 +102,9 @@ async def health():
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(trip: TripInput):
     """Return predicted trip duration for one trip."""
+    if model is None or scaler is None:
+        raise HTTPException(status_code=503, detail="Model or scaler is not loaded yet.")
+    
     try:
         # Build feature array in the exact order used during training
         features = np.array([[
@@ -114,12 +118,11 @@ async def predict(trip: TripInput):
         ]], dtype=np.float64)
 
         # Use a DataFrame so sklearn sees the feature names it was fitted with
-        import pandas as pd
         features_df = pd.DataFrame(features, columns=FEATURE_ORDER)
 
         # Scale then predict (model outputs log1p-space)
         features_scaled = scaler.transform(features_df)
-        pred_log = model.predict(features_scaled, verbose=0)
+        pred_log = model(features_scaled, training=False).numpy()
         pred_seconds = float(np.expm1(pred_log[0][0]))
 
         # Clamp to reasonable range

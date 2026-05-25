@@ -7,6 +7,7 @@ Two tabs:
      latency / throughput metrics with dynamic charts.
 """
 
+import os
 import time
 import random
 import statistics
@@ -19,7 +20,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 # ── Config ───────────────────────────────────────────────────────────────────
-API_URL = "http://localhost:8000"
+DEFAULT_API_URL = "http://localhost:8000"
+API_URL = os.getenv("TAXI_API_URL", DEFAULT_API_URL).rstrip("/")
 
 DAY_NAMES = {1: "Sunday", 2: "Monday", 3: "Tuesday", 4: "Wednesday",
              5: "Thursday", 6: "Friday", 7: "Saturday"}
@@ -31,6 +33,7 @@ MONTH_NAMES = {1: "January", 2: "February", 3: "March", 4: "April", 5: "May",
 # ── Page setup ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="NYC Taxi Trip Predictor", layout="wide")
 st.title("NYC Taxi Trip Duration Predictor")
+st.caption(f"API endpoint: {API_URL}")
 
 tab_predict, tab_loadtest = st.tabs(["Single Trip Prediction", "Load Testing"])
 
@@ -83,7 +86,7 @@ with tab_predict:
             metric_cols[0].metric("Duration (seconds)", f"{secs:.1f}")
             metric_cols[1].metric("Duration (minutes)", f"{data['trip_duration_minutes']:.2f}")
         except requests.ConnectionError:
-            st.error("Cannot connect to the API. Make sure the FastAPI server is running on port 8000.")
+            st.error(f"Cannot connect to the API at {API_URL}. Make sure the FastAPI server is running.")
         except Exception as e:
             st.error(f"Error: {e}")
 
@@ -105,12 +108,13 @@ def _random_payload() -> dict:
     }
 
 
-def _send_request(session: requests.Session) -> dict:
+def _send_request() -> dict:
     """Send a single prediction request. Returns timing information."""
     payload = _random_payload()
     start = time.perf_counter()
     try:
-        resp = session.post(f"{API_URL}/predict", json=payload, timeout=30)
+        with requests.Session() as session:
+            resp = session.post(f"{API_URL}/predict", json=payload, timeout=30)
         latency = time.perf_counter() - start
         return {"latency": latency, "status": resp.status_code, "success": resp.status_code == 200}
     except Exception as e:
@@ -140,10 +144,8 @@ with tab_loadtest:
         completed = 0
         wall_start = time.perf_counter()
 
-        session = requests.Session()
-
         with ThreadPoolExecutor(max_workers=num_users) as pool:
-            futures = [pool.submit(_send_request, session) for _ in range(total_requests)]
+            futures = [pool.submit(_send_request) for _ in range(total_requests)]
 
             for future in as_completed(futures):
                 result = future.result()

@@ -15,9 +15,28 @@ Fixes vs original:
   4. total_amount < 0 rows dropped
 """
 
+import argparse
+import os
+
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import IntegerType, LongType
+
+DEFAULT_RAW_PATH = "./YellowTripData"
+DEFAULT_OUTPUT_PATH = "./Data/Data_Cleaned"
+
+parser = argparse.ArgumentParser(description="Clean NYC Yellow Taxi parquet data.")
+parser.add_argument(
+    "--input",
+    default=os.getenv("TAXI_RAW_PATH", DEFAULT_RAW_PATH),
+    help="Input raw parquet path. Can also be set with TAXI_RAW_PATH.",
+)
+parser.add_argument(
+    "--output",
+    default=os.getenv("TAXI_CLEANED_PATH", DEFAULT_OUTPUT_PATH),
+    help="Output cleaned parquet path. Can also be set with TAXI_CLEANED_PATH.",
+)
+args = parser.parse_args()
 
 spark = SparkSession.builder.appName("NYCTaxiCleaning").getOrCreate()
 spark.sparkContext.setLogLevel("WARN")
@@ -25,7 +44,7 @@ spark.sparkContext.setLogLevel("WARN")
 # ─────────────────────────────────────────────
 # 1. LOAD
 # ─────────────────────────────────────────────
-df = spark.read.parquet("/mnt/c/Users/13392/Downloads/OneDrive - University of Massachusetts/Grad_School_Sem_2/CS 532/Project/Data")
+df = spark.read.parquet(args.input)
 
 print(f"Raw row count: {df.count():,}")
 df.printSchema()
@@ -187,7 +206,5 @@ df.describe(
 # ─────────────────────────────────────────────
 # 7. SAVE
 # ─────────────────────────────────────────────
-OUTPUT_PATH = "/mnt/c/Users/13392/Downloads/OneDrive - University of Massachusetts/Grad_School_Sem_2/CS 532/Project/Data/Data_Cleaned"
-df.write.mode("overwrite").parquet(OUTPUT_PATH)
-print(f"\nCleaned data written to: {OUTPUT_PATH}")
-
+df.write.mode("overwrite").parquet(args.output)
+print(f"\nCleaned data written to: {args.output}")

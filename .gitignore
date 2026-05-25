@@ -3,3 +3,5 @@ todo.txt
 pypspark
 Data
 .venv
+__pycache__/
+*.pyc
