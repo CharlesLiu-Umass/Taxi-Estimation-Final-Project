@@ -1,3 +1,8 @@
+# Taxi-Estimation-Final-Project Fork
+Forked from https://github.com/Lyle-Kottke/CS-532-Final-Project. This was a team project for CS532. My main contributions were to model exploration, architecture and optimization. Utilizing Keras, Tensorflow Lite and feature pruning, I was able to balance latency and accuracy, resulting in 10x reduction in latency and eliminating request timeout failures. 
+
+# Below is the rest of the original README from the original repo:
+
 # CS-532-Final-Project
 
 Github link: https://github.com/Lyle-Kottke/CS-532-Final-Project
